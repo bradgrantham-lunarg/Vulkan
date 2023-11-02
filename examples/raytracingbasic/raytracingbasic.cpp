@@ -37,6 +37,10 @@ public:
 	PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
 	PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
 	PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
+	PFN_vkCreateDeferredOperationKHR vkCreateDeferredOperationKHR;
+	PFN_vkDeferredOperationJoinKHR vkDeferredOperationJoinKHR;
+	PFN_vkGetDeferredOperationResultKHR vkGetDeferredOperationResultKHR;
+	PFN_vkDestroyDeferredOperationKHR vkDestroyDeferredOperationKHR;
 
 	VkPhysicalDeviceRayTracingPipelinePropertiesKHR  rayTracingPipelineProperties{};
 	VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures{};
@@ -670,6 +674,9 @@ public:
 		/*
 			Create the ray tracing pipeline
 		*/
+                VkDeferredOperationKHR operation;
+                VK_CHECK_RESULT(vkCreateDeferredOperationKHR(device, nullptr, &operation));
+
 		VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCI{};
 		rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
 		rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
@@ -678,7 +685,19 @@ public:
 		rayTracingPipelineCI.pGroups = shaderGroups.data();
 		rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
 		rayTracingPipelineCI.layout = pipelineLayout;
-		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &pipeline));
+
+		VkResult result = vkCreateRayTracingPipelinesKHR(device, operation, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &pipeline);
+		if(result == VK_OPERATION_DEFERRED_KHR) {
+			printf("operation was deferred\n");
+			do {
+				result = vkDeferredOperationJoinKHR(device, operation);
+				printf("operation join had result %d\n", result);
+			} while(result != VK_SUCCESS);
+			printf("operation succeeded\n");
+			result = vkGetDeferredOperationResultKHR(device, operation);
+		}
+		VK_CHECK_RESULT(result);
+                vkDestroyDeferredOperationKHR(device, operation, nullptr);
 	}
 
 	/*
@@ -873,6 +892,10 @@ public:
 		vkCmdTraceRaysKHR = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR"));
 		vkGetRayTracingShaderGroupHandlesKHR = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR"));
 		vkCreateRayTracingPipelinesKHR = reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(vkGetDeviceProcAddr(device, "vkCreateRayTracingPipelinesKHR"));
+		vkCreateDeferredOperationKHR = reinterpret_cast<PFN_vkCreateDeferredOperationKHR>(vkGetDeviceProcAddr(device, "vkCreateDeferredOperationKHR"));
+		vkDeferredOperationJoinKHR = reinterpret_cast<PFN_vkDeferredOperationJoinKHR>(vkGetDeviceProcAddr(device, "vkDeferredOperationJoinKHR"));
+		vkGetDeferredOperationResultKHR = reinterpret_cast<PFN_vkGetDeferredOperationResultKHR>(vkGetDeviceProcAddr(device, "vkGetDeferredOperationResultKHR"));
+		vkDestroyDeferredOperationKHR = reinterpret_cast<PFN_vkDestroyDeferredOperationKHR>(vkGetDeviceProcAddr(device, "vkDestroyDeferredOperationKHR"));
 
 		// Create the acceleration structures used to render the ray traced scene
 		createBottomLevelAccelerationStructure();
